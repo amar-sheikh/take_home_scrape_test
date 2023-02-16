@@ -1,13 +1,13 @@
 require 'nokogiri'
-require './webpage_fetcher'
 
 class MetadataPrinter
-  attr_reader :url, :time, :page_fetcher
+  attr_reader :url, :time, :page_fetcher, :doc
 
-  def initialize(url)
+  def initialize(url, doc)
     @url = url
     @time = Time.now
-    @page_fetcher = WebpageFetcher.new url
+    @doc = doc
+    @page_fetcher = WebpageFetcher.new(url)
   end
 
   def print
@@ -31,9 +31,5 @@ class MetadataPrinter
       images: images_count,
       last_fetch: time
     }
-  end
-
-  def doc
-    @doc ||= Nokogiri::HTML(page_fetcher.response)
   end
 end

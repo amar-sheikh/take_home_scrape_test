@@ -1,7 +1,7 @@
 require 'fileutils'
 
 class Archiver
-  attr_reader :url, :page_fetcher, :page_saver
+  attr_reader :url, :page_fetcher, :doc
   ASSET_TAGS = {
     js: 'script',
     css: 'link',
@@ -17,11 +17,11 @@ class Archiver
   def initialize(url)
     @url = url
     @page_fetcher = WebpageFetcher.new(url)
-    @page_saver = PageSaver.new(url)
+    @doc = @page_fetcher.doc
   end
 
   def archive
-    make_asset_directories
+    create_directory_structure
     download_and_modify_assets
     save_html_file
   end
@@ -30,38 +30,32 @@ class Archiver
 
   def download_and_modify_assets
     ASSET_TAGS.each do |asset, tag_name|
-      if(asset == 'css')
-        css_tag_identifier = 'type=text/css'
-        download_and_modify_tags(asset, tag_name, css_tag_identifier)
-      else
-        download_and_modify_tags(asset, tag_name)
-      end
+      download_and_modify_tags(asset, tag_name)
     end
   end
 
-  def download_and_modify_tags(asset, tag_name, identifier = nil)
+  def download_and_modify_tags(asset, tag_name)
     attribute = ATTRIBUTES[asset]
-    tags = doc.css("#{tag_name}[#{identifier || attribute}]")
+    tags = doc.css("#{tag_name}[#{attribute}]")
     tags.each do |tag|
-      file = WebpageFetcher.new(tag[attribute]).response
-      save_locally(file, tag[attribute], asset)
-      modify_tag(tag, attribute, local_file_path(tag[attribute], asset))
+      download_asset_file(tag[attribute], asset)
+      tag[attribute] = local_file_path(tag[attribute], asset)
 
-    rescue Errno::ENOENT
+    rescue Errno::ENOENT, OpenURI::HTTPError
       next
     end
   end
 
+  def download_asset_file(src, asset)
+    file = WebpageFetcher.new(absolute_path src).response
+    File.write(local_file_path(src, asset), file)
+  end
+
   def save_html_file
-    page_saver.new(url, doc.html).save
+    PageSaver.new(url, doc.to_html).save
   end
 
-  def save_locally(file, src, type)
-    filename = local_file_path(src, type)
-    File.write(filename, file)
-  end
-
-  def make_asset_directories
+  def create_directory_structure
     FileUtils.rm_rf(assets_base_directory) if Dir.exists? assets_base_directory
     FileUtils.mkdir_p(
       [ "#{assets_base_directory}/js",
@@ -75,19 +69,20 @@ class Archiver
   end
 
   def local_file_path(src, type)
-    [assets_base_directory, type, local_file_name(src, type)].join('/')
+    [assets_base_directory, type, local_file_name(src)].join('/')
   end
 
-  def local_file_name(src, type)
-    type = nil if type == :img
-    [src.split('/').last.split('?').first, type].compact.join('.')
+  def local_file_name(src)
+    src.split('/').last.split('?').first
   end
 
   def assets_base_directory
     "#{page_fetcher.base_url}-files"
   end
 
-  def doc
-    page_fetcher.doc
+  def absolute_path(path)
+    return path unless(path[0] == '/')
+
+    "https://#{page_fetcher.base_url + path}"
   end
 end

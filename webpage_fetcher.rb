@@ -13,6 +13,10 @@ class WebpageFetcher
   end
 
   def base_url
-    url.split('://')[1].split('/').first
+    url.split('://')[1].split('/').first.split('?').first
+  end
+
+  def doc
+    @doc ||= Nokogiri::HTML(response)
   end
 end
